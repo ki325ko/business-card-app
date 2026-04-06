@@ -10,6 +10,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <title>メイシログ - 名刺デジタル管理</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 :root{
   --primary:#6366f1;--primary-dark:#4f46e5;--primary-light:#a5b4fc;--primary-bg:#eef2ff;
@@ -177,6 +178,7 @@ body{font-family:-apple-system,'Hiragino Sans','Meiryo',sans-serif;background:va
       メイシログ
     </div>
     <div class="nav-actions">
+      <button class="btn btn-glass" id="syncBtn" onclick="handleSync()" title="Google同期"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0115.36-6.36L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 01-15.36 6.36L3 16"/></svg><span id="syncLabel">同期</span></button>
       <button class="btn btn-glass" onclick="openSettings()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><span>設定</span></button>
       <button class="btn btn-glass" onclick="exportCSV()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span>CSV</span></button>
       <button class="btn btn-glass" onclick="exportData()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg><span>保存</span></button>
@@ -353,9 +355,98 @@ body{font-family:-apple-system,'Hiragino Sans','Meiryo',sans-serif;background:va
 <script>
 // ============ CORE ============
 const SK='businessCards', AK='geminiApiKey';
+const GCID='155775695368-6cj0mtohrm24gnkpb3si2ofpmnfjkl2t.apps.googleusercontent.com';
+const DRIVE_SCOPE='https://www.googleapis.com/auth/drive.appdata';
+const DRIVE_FILE='meishilog_data.json';
 let cards=JSON.parse(localStorage.getItem(SK)||'[]'), editingId=null, activeTag='';
-const save=()=>localStorage.setItem(SK,JSON.stringify(cards));
+let gAccessToken=null, driveFileId=null, syncBusy=false;
+
+function save(){
+  localStorage.setItem(SK,JSON.stringify(cards));
+  if(gAccessToken)driveSave();
+}
 const getKey=()=>(localStorage.getItem(AK)||'').trim();
+
+// ============ GOOGLE DRIVE SYNC ============
+function handleSync(){
+  if(gAccessToken){driveLoad();return}
+  const client=google.accounts.oauth2.initTokenClient({
+    client_id:GCID,scope:DRIVE_SCOPE,
+    callback:async(resp)=>{
+      if(resp.error)return;
+      gAccessToken=resp.access_token;
+      document.getElementById('syncLabel').textContent='同期中...';
+      await driveLoad();
+      document.getElementById('syncLabel').textContent='同期済';
+      document.getElementById('syncBtn').style.background='rgba(16,185,129,.4)';
+    }
+  });
+  client.requestAccessToken();
+}
+
+async function driveApi(path,opts={}){
+  const r=await fetch('https://www.googleapis.com/'+path,{
+    ...opts,headers:{'Authorization':'Bearer '+gAccessToken,...(opts.headers||{})}
+  });
+  if(r.status===401){gAccessToken=null;document.getElementById('syncLabel').textContent='同期';document.getElementById('syncBtn').style.background='';throw new Error('再ログインしてください')}
+  return r;
+}
+
+async function driveFindFile(){
+  const r=await driveApi('drive/v3/files?spaces=appDataFolder&q=name%3D%27'+DRIVE_FILE+'%27&fields=files(id)');
+  const j=await r.json();
+  driveFileId=(j.files&&j.files[0])?j.files[0].id:null;
+  return driveFileId;
+}
+
+async function driveLoad(){
+  syncBusy=true;
+  try{
+    await driveFindFile();
+    if(!driveFileId){syncBusy=false;return}
+    const r=await driveApi('drive/v3/files/'+driveFileId+'?alt=media');
+    const data=await r.json();
+    if(data.cards&&Array.isArray(data.cards)){
+      const merged=mergeCards(cards,data.cards);
+      cards=merged;
+      localStorage.setItem(SK,JSON.stringify(cards));
+      renderList();
+    }
+    if(data.geminiApiKey)localStorage.setItem(AK,data.geminiApiKey);
+  }catch(e){console.error('Drive load error:',e)}
+  syncBusy=false;
+}
+
+function mergeCards(local,remote){
+  const map=new Map();
+  remote.forEach(c=>map.set(c.id,c));
+  local.forEach(c=>{
+    const existing=map.get(c.id);
+    if(!existing||(c.updatedAt||0)>=(existing.updatedAt||0))map.set(c.id,c);
+  });
+  return [...map.values()];
+}
+
+let saveTimer=null;
+async function driveSave(){
+  if(syncBusy)return;
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(async()=>{
+    const data=JSON.stringify({cards,geminiApiKey:getKey()});
+    const meta={name:DRIVE_FILE,mimeType:'application/json',...(!driveFileId?{parents:['appDataFolder']}:{})};
+    const boundary='---meishilog';
+    const body='--'+boundary+'\r\nContent-Type:application/json;charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type:application/json\r\n\r\n'+data+'\r\n--'+boundary+'--';
+    try{
+      const url=driveFileId
+        ?'upload/drive/v3/files/'+driveFileId+'?uploadType=multipart'
+        :'upload/drive/v3/files?uploadType=multipart';
+      const method=driveFileId?'PATCH':'POST';
+      const r=await driveApi(url,{method,headers:{'Content-Type':'multipart/related; boundary='+boundary},body});
+      if(!driveFileId){const j=await r.json();driveFileId=j.id}
+      document.getElementById('syncLabel').textContent='同期済';
+    }catch(e){console.error('Drive save error:',e)}
+  },1500);
+}
 const esc=s=>{if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML};
 
 const FIELDS=['name','gender','birthday','age','residence','phone','email','contact',
