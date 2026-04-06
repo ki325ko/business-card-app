@@ -576,7 +576,7 @@ async function callGemini(key,b64){
     {text:'この名刺画像から情報を読み取り、以下のJSON形式で返してください。該当しない項目は空文字にしてください。余計な説明は不要です。JSONのみ返してください。\n{"name":"","company":"","position":"","jobType":"","phone":"","email":"","hp":"","workplace":"","residence":"","contact":""}'},
     {inline_data:{mime_type:mimeType,data:base64Data}}
   ]}],generationConfig:{temperature:0}};
-  const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key='+encodeURIComponent(key),{
+  const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key='+encodeURIComponent(key),{
     method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const j=await r.json();
   if(!r.ok){const msg=j.error&&j.error.message||r.status;throw new Error(msg)}
