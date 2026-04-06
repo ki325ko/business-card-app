@@ -23,11 +23,11 @@
 body{font-family:-apple-system,'Hiragino Sans','Meiryo',sans-serif;background:var(--bg);color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased;padding-bottom:80px}
 
 /* ===== NAV ===== */
-.navbar{background:var(--primary);color:#fff;padding:14px 20px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(99,102,241,.3)}
-.nav-inner{max-width:960px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
-.brand{font-size:1.15rem;font-weight:800;letter-spacing:-.5px;display:flex;align-items:center;gap:8px}
-.brand svg{width:26px;height:26px}
-.nav-actions{display:flex;gap:6px}
+.navbar{background:var(--primary);color:#fff;padding:10px 12px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(99,102,241,.3)}
+.nav-inner{max-width:960px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.brand{font-size:1.05rem;font-weight:800;letter-spacing:-.5px;display:flex;align-items:center;gap:6px;flex-shrink:0}
+.brand img{width:28px;height:28px;border-radius:6px}
+.nav-actions{display:flex;gap:4px;flex-wrap:nowrap;flex-shrink:1;min-width:0}
 
 /* ===== BUTTONS ===== */
 .btn{padding:8px 16px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:.82rem;font-weight:600;transition:all .15s;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
@@ -42,7 +42,7 @@ body{font-family:-apple-system,'Hiragino Sans','Meiryo',sans-serif;background:va
 .btn-icon{width:36px;height:36px;padding:0;justify-content:center;border-radius:50%}
 
 /* ===== DASHBOARD ===== */
-.dashboard{max-width:960px;margin:0 auto;padding:20px 16px 0}
+.dashboard{max-width:960px;margin:0 auto;padding:20px 16px 0;overflow-x:hidden}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
 .stat{background:var(--surface);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow);text-align:center}
 .stat-num{font-size:1.5rem;font-weight:800;color:var(--primary)}
@@ -60,7 +60,7 @@ body{font-family:-apple-system,'Hiragino Sans','Meiryo',sans-serif;background:va
 
 /* ===== CARD LIST ===== */
 .card-grid{display:grid;gap:10px}
-.card{background:var(--surface);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:14px;border:1.5px solid transparent}
+.card{background:var(--surface);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:14px;border:1.5px solid transparent;overflow:hidden}
 .card:hover{box-shadow:var(--shadow-lg);border-color:var(--primary-light);transform:translateY(-1px)}
 .card-avatar{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#fff;flex-shrink:0}
 .card-body{flex:1;min-width:0}
@@ -164,7 +164,18 @@ body{font-family:-apple-system,'Hiragino Sans','Meiryo',sans-serif;background:va
   .stats{grid-template-columns:repeat(3,1fr)}
   .stat{padding:10px 8px}
   .stat-num{font-size:1.2rem}
+  .navbar{padding:8px 10px}
+  .nav-actions .btn{padding:6px 8px}
   .nav-actions .btn span{display:none}
+  .nav-actions{gap:3px}
+  .brand{font-size:.95rem;gap:5px}
+  .brand img{width:24px;height:24px}
+  .dashboard{padding:12px 10px 0}
+  .card{padding:12px;gap:10px}
+  .card-avatar{width:40px;height:40px;font-size:.95rem}
+  .card-name{font-size:.88rem}
+  .card-sub{font-size:.73rem}
+  .card-right{max-width:80px}
   .fab-group{bottom:16px;right:16px}
 }
 </style>
@@ -174,7 +185,7 @@ body{font-family:-apple-system,'Hiragino Sans','Meiryo',sans-serif;background:va
 <nav class="navbar">
   <div class="nav-inner">
     <div class="brand">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="3"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="13" y2="12"/><circle cx="16" cy="15" r="2"/></svg>
+      <img src="icon-192.png" alt="メイシログ">
       メイシログ
     </div>
     <div class="nav-actions">
