@@ -217,17 +217,17 @@ body{font-family:-apple-system,'Hiragino Sans','Meiryo',sans-serif;background:va
 <div class="modal" style="max-width:480px">
   <div class="modal-head"><h2>OCR設定</h2><button class="btn btn-outline btn-sm" onclick="closeSettings()">&times;</button></div>
   <div class="modal-body">
-    <div class="settings-info"><b>名刺スキャン</b>には OCR.space の無料APIキーが必要です。<br>月25,000回まで無料で使えます。</div>
+    <div class="settings-info"><b>名刺スキャン</b>には Gemini API の無料キーが必要です。<br>無料枠で1日1,500リクエストまで使えます。</div>
     <div class="settings-steps">
       <b>APIキーの取得手順（1分）:</b>
       <ol>
-        <li><a href="https://ocr.space/ocrapi/freekey" target="_blank">ocr.space/ocrapi/freekey</a> にアクセス</li>
-        <li>メールアドレスを入力して送信</li>
-        <li>届いたメールのAPIキーをコピー</li>
-        <li>下の欄に貼り付けて「保存」</li>
+        <li><a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a> にアクセス</li>
+        <li>Googleアカウントでログイン</li>
+        <li>「APIキーを作成」をクリック</li>
+        <li>コピーして下の欄に貼り付けて「保存」</li>
       </ol>
     </div>
-    <div class="fg"><label>APIキー</label><input type="text" id="apiKeyInput" placeholder="K1234567890abc"></div>
+    <div class="fg"><label>Gemini APIキー</label><input type="text" id="apiKeyInput" placeholder="AIzaSy..."></div>
     <div id="apiStatus" style="font-size:.8rem;margin-top:6px;font-weight:600"></div>
   </div>
   <div class="modal-foot"><button class="btn btn-outline" onclick="closeSettings()">閉じる</button><button class="btn btn-primary" onclick="saveApiKey()">保存</button></div>
@@ -257,7 +257,7 @@ body{font-family:-apple-system,'Hiragino Sans','Meiryo',sans-serif;background:va
           <div class="ocr-preview hidden" id="ocrPreview"><img id="ocrImg"></div>
           <div class="ocr-prog" id="ocrProg"><div class="ocr-bar"><div class="ocr-fill" id="ocrFill"></div></div><div class="ocr-status" id="ocrStatus">準備中...</div></div>
           <div class="ocr-result hidden" id="ocrResult">
-            <div style="font-size:.82rem;font-weight:700;margin-bottom:8px">読み取り結果 — 振り分けを確認してください</div>
+            <div style="font-size:.82rem;font-weight:700;margin-bottom:8px">読み取り結果 — 内容を確認してください</div>
             <div class="ocr-lines" id="ocrLines"></div>
             <button type="button" class="btn btn-primary" style="margin-top:10px;width:100%" onclick="applyOcr()">フォームに反映</button>
           </div>
@@ -351,7 +351,7 @@ body{font-family:-apple-system,'Hiragino Sans','Meiryo',sans-serif;background:va
 
 <script>
 // ============ CORE ============
-const SK='businessCards', AK='ocrSpaceApiKey';
+const SK='businessCards', AK='geminiApiKey';
 let cards=JSON.parse(localStorage.getItem(SK)||'[]'), editingId=null, activeTag='';
 const save=()=>localStorage.setItem(SK,JSON.stringify(cards));
 const getKey=()=>(localStorage.getItem(AK)||'').trim();
@@ -541,10 +541,9 @@ async function saveApiKey(){
   const key=document.getElementById('apiKeyInput').value.trim(),st=document.getElementById('apiStatus');
   if(!key){localStorage.removeItem(AK);st.style.color='var(--danger)';st.textContent='キーを削除しました';return}
   st.style.color='var(--text3)';st.textContent='確認中...';
-  try{const fd=new FormData();fd.append('apikey',key);fd.append('language','jpn');
-    fd.append('base64Image','data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
-    const r=await fetch('https://api.ocr.space/parse/image',{method:'POST',body:fd}),j=await r.json();
-    if(j.OCRExitCode===99){st.style.color='var(--danger)';st.textContent='無効なAPIキーです';return}
+  try{
+    const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models?key='+encodeURIComponent(key));
+    if(!r.ok){st.style.color='var(--danger)';st.textContent='無効なAPIキーです';return}
     localStorage.setItem(AK,key);st.style.color='var(--success)';st.textContent='有効です。保存しました！';
   }catch(e){localStorage.setItem(AK,key);st.style.color='var(--success)';st.textContent='保存しました'}
 }
@@ -568,14 +567,23 @@ function compressImage(file,maxKB=900){
         else{const r=new FileReader();r.onload=()=>resolve(r.result);r.readAsDataURL(b)}
       },'image/jpeg',q);tryC();URL.revokeObjectURL(img.src)};img.src=URL.createObjectURL(file)})
 }
-async function callOcr(key,b64,eng){
-  const fd=new FormData();fd.append('apikey',key);fd.append('language','jpn');fd.append('base64Image',b64);
-  fd.append('OCREngine',String(eng));fd.append('scale','true');fd.append('isTable','true');fd.append('detectOrientation','true');
-  const r=await fetch('https://api.ocr.space/parse/image',{method:'POST',body:fd});
-  if(!r.ok)throw new Error('API error: '+r.status);const j=await r.json();
-  if(j.IsErroredOnProcessing)return null;
-  const t=j.ParsedResults&&j.ParsedResults[0]?j.ParsedResults[0].ParsedText:'';
-  return t&&t.trim()?t:null;
+async function callGemini(key,b64){
+  const mimeMatch=b64.match(/^data:(image\/\w+);/);
+  const mimeType=mimeMatch?mimeMatch[1]:'image/jpeg';
+  const base64Data=b64.replace(/^data:image\/\w+;base64,/,'');
+  const body={contents:[{parts:[
+    {text:'この名刺画像から情報を読み取り、以下のJSON形式で返してください。該当しない項目は空文字にしてください。余計な説明は不要です。JSONのみ返してください。\n{"name":"","company":"","position":"","jobType":"","phone":"","email":"","hp":"","workplace":"","residence":"","contact":""}'},
+    {inline_data:{mime_type:mimeType,data:base64Data}}
+  ]}],generationConfig:{temperature:0}};
+  const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='+encodeURIComponent(key),{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!r.ok)throw new Error('API error: '+r.status);
+  const j=await r.json();
+  const text=j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts[0].text;
+  if(!text)return null;
+  const jsonMatch=text.match(/\{[\s\S]*\}/);
+  if(!jsonMatch)return null;
+  return JSON.parse(jsonMatch[0]);
 }
 async function processOcr(file){
   const key=getKey();if(!key){alert('APIキー未設定です');return}
@@ -585,57 +593,36 @@ async function processOcr(file){
   const prog=document.getElementById('ocrProg'),fill=document.getElementById('ocrFill'),st=document.getElementById('ocrStatus');
   prog.style.display='block';fill.style.width='10%';st.textContent='画像を圧縮中...';
   try{
-    const b64=await compressImage(file,900);fill.style.width='30%';st.textContent='Engine1 で認識中...';
-    let text=await callOcr(key,b64,1);
-    if(!text){fill.style.width='60%';st.textContent='Engine1失敗 → Engine2で再試行...';text=await callOcr(key,b64,2)}
-    if(!text){fill.style.width='100%';st.textContent='読み取れませんでした。明るい場所で撮り直してください';return}
-    fill.style.width='100%';st.textContent='完了！振り分けを確認してください';
-    buildPicker(text);autoFill();
+    const b64=await compressImage(file,900);fill.style.width='30%';st.textContent='Gemini で認識中...';
+    const result=await callGemini(key,b64);
+    if(!result){fill.style.width='100%';st.textContent='読み取れませんでした。明るい場所で撮り直してください';return}
+    fill.style.width='100%';st.textContent='完了！内容を確認してください';
+    buildGeminiResult(result);autoFillGemini(result);
   }catch(e){fill.style.width='0%';st.textContent='エラー: '+e.message}
 }
 
-const FOPTS=[{v:'',l:'-- スキップ --'},{v:'name',l:'名前'},{v:'company',l:'企業名'},{v:'position',l:'役職'},
-  {v:'jobType',l:'職種・部署'},{v:'hp',l:'HP / URL'},{v:'workplace',l:'勤務地・住所'},
-  {v:'phone',l:'電話番号'},{v:'email',l:'メールアドレス'},{v:'contact',l:'その他連絡'},{v:'residence',l:'住んでいる場所'},{v:'content',l:'メモ'}];
 
-function guess(l){
-  if(!l.trim())return'';
-  if(l.match(/https?:\/\/|www\./i))return'hp';
-  if(l.match(/[\w.\-+]+@[\w.\-]+\.\w{2,}/))return'email';
-  if(l.match(/(?:TEL|Tel|tel|電話|携帯|FAX|Fax|Phone|Mobile)/i))return'phone';
-  if(l.match(/^[\d\-（）()\s+]{8,}$/))return'phone';
-  if(l.match(/〒?\s*\d{3}[\-ー]\d{4}/))return'workplace';
-  if(l.match(/(東京都|北海道|大阪府|京都府|.{2,3}県).*(市|区|町|村|丁目|番)/)&&!l.match(/@|http/))return'workplace';
-  if(l.match(/株式会社|㈱|有限会社|合同会社|合資会社|一般社団|NPO|Corporation|Corp\.|Inc\.|Ltd\.|Co\./i))return'company';
-  const p=['代表取締役','取締役','社長','副社長','専務','常務','部長','課長','係長','主任','マネージャー','リーダー','ディレクター','CEO','CTO','CFO','COO','VP','Manager','Director','President'];
-  for(const t of p)if(l.includes(t))return'position';
-  if(l.match(/(部|課|室|局|センター|事業部|支社|支店|営業所|本部)$/)&&l.length<25)return'jobType';
-  if(l.match(/^[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\s　]{2,12}$/)&&l.replace(/[\s　]/g,'').length<=6&&
-    !l.match(/東京|大阪|北海道|京都|愛知|福岡|県|都|府|市|区|町|村|会社|法人|部|課|室|営業|支店|事業/))return'name';
-  return'';
-}
-function buildPicker(text){
-  const lines=text.split(/\r?\n/).map(l=>l.trim()).filter(l=>l),el=document.getElementById('ocrLines');el.innerHTML='';
-  lines.forEach(line=>{
-    const g=guess(line),div=document.createElement('div');div.className='ocr-line'+(g?' matched':'');div.dataset.text=line;
-    div.innerHTML=`<span class="lt">${esc(line)}</span><select onchange="this.parentElement.className='ocr-line'+(this.value?' matched':'')">${FOPTS.map(o=>`<option value="${o.v}"${o.v===g?' selected':''}>${o.l}</option>`).join('')}</select>`;
+let lastGeminiResult=null;
+function buildGeminiResult(result){
+  lastGeminiResult=result;
+  const el=document.getElementById('ocrLines');el.innerHTML='';
+  const labels={name:'名前',company:'企業名',position:'役職',jobType:'職種・部署',phone:'電話番号',email:'メールアドレス',hp:'HP / URL',workplace:'勤務地・住所',residence:'住んでいる場所',contact:'その他連絡'};
+  for(const[k,label]of Object.entries(labels)){
+    const v=result[k]||'';
+    const div=document.createElement('div');div.className='ocr-line'+(v?' matched':'');
+    div.innerHTML=`<span class="lt"><b>${esc(label)}:</b> ${esc(v||'--')}</span>`;
     el.appendChild(div);
-  });
+  }
   document.getElementById('ocrResult').classList.remove('hidden');
 }
-function collectOcr(){
-  const r={};document.querySelectorAll('#ocrLines .ocr-line').forEach(el=>{
-    const f=el.querySelector('select').value,t=el.dataset.text;if(!f||!t)return;if(!r[f])r[f]=[];r[f].push(t)});return r;
-}
 function applyOcr(){
-  const f=document.getElementById('cardForm'),v=collectOcr();
-  for(const[k,vals]of Object.entries(v)){const el=f.elements[k];if(el)el.value=vals.join('\n')}
-  if(!f.elements.metDate.value)f.elements.metDate.value=new Date().toISOString().slice(0,10);
-  highlight();document.querySelector('#formModal .modal-body').scrollTo({top:document.getElementById('ocrSection').offsetHeight,behavior:'smooth'});
+  if(!lastGeminiResult)return;
+  autoFillGemini(lastGeminiResult);
+  document.querySelector('#formModal .modal-body').scrollTo({top:document.getElementById('ocrSection').offsetHeight,behavior:'smooth'});
 }
-function autoFill(){
-  const f=document.getElementById('cardForm'),v=collectOcr();
-  for(const[k,vals]of Object.entries(v)){const el=f.elements[k];if(el)el.value=vals.join('\n')}
+function autoFillGemini(result){
+  const f=document.getElementById('cardForm');
+  for(const[k,v]of Object.entries(result)){const el=f.elements[k];if(el&&v)el.value=v}
   if(!f.elements.metDate.value)f.elements.metDate.value=new Date().toISOString().slice(0,10);
   highlight();
 }
