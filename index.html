@@ -371,6 +371,19 @@ const DRIVE_SCOPE='https://www.googleapis.com/auth/drive.appdata';
 const DRIVE_FILE='meishilog_data.json';
 let cards=JSON.parse(localStorage.getItem(SK)||'[]'), editingId=null, activeTag='';
 let gAccessToken=null, driveFileId=null, syncBusy=false;
+const TOKEN_KEY='meishilog_gtoken', TOKEN_EXP_KEY='meishilog_gtoken_exp';
+
+function saveToken(token,expiresIn){
+  gAccessToken=token;
+  const exp=Date.now()+(expiresIn-60)*1000;
+  localStorage.setItem(TOKEN_KEY,token);
+  localStorage.setItem(TOKEN_EXP_KEY,String(exp));
+}
+function loadToken(){
+  const t=localStorage.getItem(TOKEN_KEY),exp=Number(localStorage.getItem(TOKEN_EXP_KEY)||0);
+  if(t&&Date.now()<exp){gAccessToken=t;return true}
+  gAccessToken=null;localStorage.removeItem(TOKEN_KEY);localStorage.removeItem(TOKEN_EXP_KEY);return false;
+}
 
 function save(){
   localStorage.setItem(SK,JSON.stringify(cards));
@@ -379,37 +392,50 @@ function save(){
 const getKey=()=>(localStorage.getItem(AK)||'').trim();
 
 // ============ GOOGLE DRIVE SYNC ============
-async function handleSync(){
-  if(gAccessToken){
-    document.getElementById('syncLabel').textContent='同期中...';
-    try{await driveLoad();await driveSaveNow();document.getElementById('syncLabel').textContent='同期済'}
-    catch(e){document.getElementById('syncLabel').textContent='エラー';alert('同期エラー: '+e.message)}
-    return;
-  }
+function setSyncUI(label,ok){
+  document.getElementById('syncLabel').textContent=label;
+  document.getElementById('syncBtn').style.background=ok?'rgba(16,185,129,.4)':'';
+}
+
+function doLogin(callback){
   const client=google.accounts.oauth2.initTokenClient({
     client_id:GCID,scope:DRIVE_SCOPE,
     callback:async(resp)=>{
       if(resp.error){alert('ログインエラー: '+(resp.error_description||resp.error));return}
-      gAccessToken=resp.access_token;
-      document.getElementById('syncLabel').textContent='同期中...';
-      try{
-        await driveLoad();
-        if(cards.length)await driveSaveNow();
-        localStorage.setItem('meishilog_sync_enabled','1');
-        document.getElementById('syncLabel').textContent='同期済';
-        document.getElementById('syncBtn').style.background='rgba(16,185,129,.4)';
-        updateStats();
-      }catch(e){document.getElementById('syncLabel').textContent='エラー';alert('同期エラー: '+e.message)}
+      saveToken(resp.access_token,resp.expires_in||3600);
+      localStorage.setItem('meishilog_sync_enabled','1');
+      if(callback)await callback();
     }
   });
   client.requestAccessToken();
+}
+
+async function doSync(){
+  setSyncUI('同期中...',false);
+  try{
+    await driveLoad();
+    if(cards.length)await driveSaveNow();
+    setSyncUI('同期済',true);
+    updateStats();
+  }catch(e){
+    if(e.message==='再ログインしてください'){
+      localStorage.removeItem(TOKEN_KEY);localStorage.removeItem(TOKEN_EXP_KEY);
+      setSyncUI('同期',false);
+      doLogin(doSync);
+    }else{setSyncUI('エラー',false);alert('同期エラー: '+e.message)}
+  }
+}
+
+async function handleSync(){
+  if(!gAccessToken&&!loadToken()){doLogin(doSync);return}
+  await doSync();
 }
 
 async function driveApi(path,opts={}){
   const r=await fetch('https://www.googleapis.com/'+path,{
     ...opts,headers:{'Authorization':'Bearer '+gAccessToken,...(opts.headers||{})}
   });
-  if(r.status===401){gAccessToken=null;document.getElementById('syncLabel').textContent='同期';document.getElementById('syncBtn').style.background='';throw new Error('再ログインしてください')}
+  if(r.status===401){gAccessToken=null;localStorage.removeItem(TOKEN_KEY);localStorage.removeItem(TOKEN_EXP_KEY);setSyncUI('同期',false);throw new Error('再ログインしてください')}
   return r;
 }
 
@@ -763,22 +789,25 @@ renderList();
 
 // ============ AUTO SYNC ON LOAD ============
 function autoSync(){
-  if(typeof google==='undefined'||!google.accounts){setTimeout(autoSync,200);return}
   if(!localStorage.getItem('meishilog_sync_enabled'))return;
-  const client=google.accounts.oauth2.initTokenClient({
-    client_id:GCID,scope:DRIVE_SCOPE,prompt:'',
-    callback:async(resp)=>{
-      if(resp.error)return;
-      gAccessToken=resp.access_token;
-      document.getElementById('syncLabel').textContent='同期中...';
-      try{
-        await driveLoad();
-        document.getElementById('syncLabel').textContent='同期済';
-        document.getElementById('syncBtn').style.background='rgba(16,185,129,.4)';
-      }catch(e){document.getElementById('syncLabel').textContent='同期'}
+  if(loadToken()){
+    doSync();
+  }else{
+    // トークン切れ → GISライブラリ読み込み待ちしてサイレント再取得
+    function waitGis(){
+      if(typeof google==='undefined'||!google.accounts){setTimeout(waitGis,200);return}
+      const client=google.accounts.oauth2.initTokenClient({
+        client_id:GCID,scope:DRIVE_SCOPE,prompt:'',
+        callback:async(resp)=>{
+          if(resp.error)return;
+          saveToken(resp.access_token,resp.expires_in||3600);
+          await doSync();
+        }
+      });
+      client.requestAccessToken();
     }
-  });
-  client.requestAccessToken();
+    waitGis();
+  }
 }
 autoSync();
 </script>
