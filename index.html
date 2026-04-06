@@ -368,17 +368,26 @@ function save(){
 const getKey=()=>(localStorage.getItem(AK)||'').trim();
 
 // ============ GOOGLE DRIVE SYNC ============
-function handleSync(){
-  if(gAccessToken){driveLoad();return}
+async function handleSync(){
+  if(gAccessToken){
+    document.getElementById('syncLabel').textContent='同期中...';
+    try{await driveLoad();await driveSaveNow();document.getElementById('syncLabel').textContent='同期済'}
+    catch(e){document.getElementById('syncLabel').textContent='エラー';alert('同期エラー: '+e.message)}
+    return;
+  }
   const client=google.accounts.oauth2.initTokenClient({
     client_id:GCID,scope:DRIVE_SCOPE,
     callback:async(resp)=>{
-      if(resp.error)return;
+      if(resp.error){alert('ログインエラー: '+(resp.error_description||resp.error));return}
       gAccessToken=resp.access_token;
       document.getElementById('syncLabel').textContent='同期中...';
-      await driveLoad();
-      document.getElementById('syncLabel').textContent='同期済';
-      document.getElementById('syncBtn').style.background='rgba(16,185,129,.4)';
+      try{
+        await driveLoad();
+        if(cards.length)await driveSaveNow();
+        document.getElementById('syncLabel').textContent='同期済';
+        document.getElementById('syncBtn').style.background='rgba(16,185,129,.4)';
+        updateStats();
+      }catch(e){document.getElementById('syncLabel').textContent='エラー';alert('同期エラー: '+e.message)}
     }
   });
   client.requestAccessToken();
@@ -427,25 +436,26 @@ function mergeCards(local,remote){
   return [...map.values()];
 }
 
+async function driveSaveNow(){
+  const data=JSON.stringify({cards,geminiApiKey:getKey()});
+  const meta={name:DRIVE_FILE,mimeType:'application/json',...(!driveFileId?{parents:['appDataFolder']}:{})};
+  const boundary='---meishilog';
+  const body='--'+boundary+'\r\nContent-Type:application/json;charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type:application/json\r\n\r\n'+data+'\r\n--'+boundary+'--';
+  const url=driveFileId
+    ?'upload/drive/v3/files/'+driveFileId+'?uploadType=multipart'
+    :'upload/drive/v3/files?uploadType=multipart';
+  const method=driveFileId?'PATCH':'POST';
+  const r=await driveApi(url,{method,headers:{'Content-Type':'multipart/related; boundary='+boundary},body});
+  if(!r.ok){const e=await r.json();throw new Error(e.error&&e.error.message||r.status)}
+  if(!driveFileId){const j=await r.json();driveFileId=j.id}
+  document.getElementById('syncLabel').textContent='同期済';
+}
+
 let saveTimer=null;
-async function driveSave(){
+function driveSave(){
   if(syncBusy)return;
   clearTimeout(saveTimer);
-  saveTimer=setTimeout(async()=>{
-    const data=JSON.stringify({cards,geminiApiKey:getKey()});
-    const meta={name:DRIVE_FILE,mimeType:'application/json',...(!driveFileId?{parents:['appDataFolder']}:{})};
-    const boundary='---meishilog';
-    const body='--'+boundary+'\r\nContent-Type:application/json;charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type:application/json\r\n\r\n'+data+'\r\n--'+boundary+'--';
-    try{
-      const url=driveFileId
-        ?'upload/drive/v3/files/'+driveFileId+'?uploadType=multipart'
-        :'upload/drive/v3/files?uploadType=multipart';
-      const method=driveFileId?'PATCH':'POST';
-      const r=await driveApi(url,{method,headers:{'Content-Type':'multipart/related; boundary='+boundary},body});
-      if(!driveFileId){const j=await r.json();driveFileId=j.id}
-      document.getElementById('syncLabel').textContent='同期済';
-    }catch(e){console.error('Drive save error:',e)}
-  },1500);
+  saveTimer=setTimeout(()=>driveSaveNow().catch(e=>console.error('Drive save error:',e)),1500);
 }
 const esc=s=>{if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML};
 
