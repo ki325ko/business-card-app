@@ -384,6 +384,7 @@ async function handleSync(){
       try{
         await driveLoad();
         if(cards.length)await driveSaveNow();
+        localStorage.setItem('meishilog_sync_enabled','1');
         document.getElementById('syncLabel').textContent='同期済';
         document.getElementById('syncBtn').style.background='rgba(16,185,129,.4)';
         updateStats();
@@ -748,6 +749,27 @@ document.querySelectorAll('.overlay').forEach(el=>el.addEventListener('click',e=
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeForm();closeDetail();closeSettings()}});
 if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 renderList();
+
+// ============ AUTO SYNC ON LOAD ============
+function autoSync(){
+  if(typeof google==='undefined'||!google.accounts){setTimeout(autoSync,200);return}
+  if(!localStorage.getItem('meishilog_sync_enabled'))return;
+  const client=google.accounts.oauth2.initTokenClient({
+    client_id:GCID,scope:DRIVE_SCOPE,prompt:'',
+    callback:async(resp)=>{
+      if(resp.error)return;
+      gAccessToken=resp.access_token;
+      document.getElementById('syncLabel').textContent='同期中...';
+      try{
+        await driveLoad();
+        document.getElementById('syncLabel').textContent='同期済';
+        document.getElementById('syncBtn').style.background='rgba(16,185,129,.4)';
+      }catch(e){document.getElementById('syncLabel').textContent='同期'}
+    }
+  });
+  client.requestAccessToken();
+}
+autoSync();
 </script>
 </body>
 </html>
