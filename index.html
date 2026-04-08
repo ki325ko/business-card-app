@@ -287,7 +287,7 @@ body.is-pwa .navbar{padding-top:max(env(safe-area-inset-top,0px),40px)}
         <div class="fgrid">
           <div class="fg"><label>名前 *</label><input name="name" required></div>
           <div class="fg"><label>性別</label><select name="gender"><option value="">--</option><option>男性</option><option>女性</option><option>その他</option></select></div>
-          <div class="fg"><label>生年月日</label><input type="date" name="birthday" onchange="calcAge()"></div>
+          <div class="fg"><label>生年月日</label><input type="text" name="birthday" placeholder="2024/3/15" inputmode="numeric" onchange="this.value=parseDate(this.value);calcAge()"></div>
           <div class="fg"><label>年齢</label><input type="number" name="age" min="0" max="150"></div>
           <div class="fg"><label>住んでいる場所</label><input name="residence"></div>
           <div class="fg"><label>電話番号</label><input name="phone" type="tel" placeholder="090-1234-5678"></div>
@@ -311,7 +311,7 @@ body.is-pwa .navbar{padding-top:max(env(safe-area-inset-top,0px),40px)}
       <div class="fsec">
         <div class="fsec-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>出会い・つながり</div>
         <div class="fgrid">
-          <div class="fg"><label>あった日</label><input type="date" name="metDate"></div>
+          <div class="fg"><label>あった日</label><input type="text" name="metDate" placeholder="2024/3/15" inputmode="numeric" onchange="this.value=parseDate(this.value)"></div>
           <div class="fg"><label>出会ったきっかけ</label><input name="howMet"></div>
           <div class="fg"><label>つながりたい人</label><input name="wantToConnect"></div>
           <div class="fg"><label>紹介を与えた人</label><input name="introducedTo"></div>
@@ -395,6 +395,19 @@ function save(){
 }
 const getKey=()=>(localStorage.getItem(AK)||'').trim();
 const toUrl=s=>s&&!/^https?:\/\//i.test(s)?'https://'+s:s;
+function parseDate(s){
+  if(!s)return'';
+  // already yyyy-mm-dd
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;
+  let m;
+  // 2024年3月15日 or 2024年03月15日
+  if(m=s.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?/))return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+  // 2024/3/15 or 2024-3-15 or 2024.3.15
+  if(m=s.match(/(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/))return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+  // 20240315
+  if(m=s.match(/^(\d{4})(\d{2})(\d{2})$/))return m[1]+'-'+m[2]+'-'+m[3];
+  return s;
+}
 
 // ============ GOOGLE DRIVE SYNC ============
 function setSyncUI(label,ok){
