@@ -159,8 +159,9 @@ body{font-family:-apple-system,'Hiragino Sans','Meiryo',sans-serif;background:va
 .settings-steps a{color:var(--primary)}
 
 @media all and (display-mode:standalone){
-  .navbar{padding-top:max(env(safe-area-inset-top,0px),36px)}
+  .navbar{padding-top:max(env(safe-area-inset-top,0px),40px)}
 }
+body.is-pwa .navbar{padding-top:max(env(safe-area-inset-top,0px),40px)}
 .hidden{display:none!important}
 @media(max-width:600px){
   .fgrid,.dgrid{grid-template-columns:1fr}
@@ -789,6 +790,7 @@ function importData(e){const f=e.target.files[0];if(!f)return;const r=new FileRe
 document.querySelectorAll('.overlay').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)el.classList.add('hidden')}));
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeForm();closeDetail();closeSettings()}});
 if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+if(window.matchMedia('(display-mode:standalone)').matches||window.navigator.standalone)document.body.classList.add('is-pwa');
 renderList();
 
 // ============ AUTO SYNC ON LOAD ============
