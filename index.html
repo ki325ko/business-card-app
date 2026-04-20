@@ -151,6 +151,20 @@ body{font-family:-apple-system,'Hiragino Sans','Meiryo',sans-serif;background:va
 .ditem .dv a{color:var(--primary);text-decoration:none}
 .ditem .dv a:hover{text-decoration:underline}
 
+/* ===== TABLE VIEW ===== */
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:var(--radius);box-shadow:var(--shadow)}
+.meishi-table{border-collapse:collapse;width:max-content;min-width:100%;background:var(--surface);font-size:.78rem}
+.meishi-table th,.meishi-table td{border:1px solid var(--border);padding:7px 10px;white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis}
+.meishi-table th{background:var(--primary);color:#fff;font-weight:700;font-size:.72rem;letter-spacing:.3px;position:sticky;top:0;z-index:2}
+.meishi-table th:first-child,.meishi-table td:first-child{position:sticky;left:0;z-index:3;min-width:100px}
+.meishi-table th:first-child{z-index:4;background:var(--primary-dark)}
+.meishi-table td:first-child{background:var(--primary-bg);font-weight:700;color:var(--primary-dark)}
+.meishi-table tr:hover td{background:#f0f4ff;cursor:pointer}
+.meishi-table tr:hover td:first-child{background:#dde5ff}
+.meishi-table td:empty::after{content:'—';color:var(--text3)}
+.btn-view{background:rgba(255,255,255,.18);color:#fff;border:1.5px solid rgba(255,255,255,.3)}
+.btn-view.active{background:rgba(255,255,255,.35);border-color:#fff}
+
 /* ===== SETTINGS ===== */
 .settings-info{background:var(--primary-bg);border:1.5px solid var(--primary-light);border-radius:var(--radius);padding:16px;margin-bottom:16px}
 .settings-info b{color:var(--primary-dark)}
@@ -220,9 +234,13 @@ body.is-pwa .navbar{padding-top:max(env(safe-area-inset-top,0px),40px)}
       <option value="name">名前順</option>
       <option value="company">企業名順</option>
     </select>
+    <div style="display:flex;gap:4px">
+      <button id="viewCard" onclick="setView('card')" style="padding:8px 14px;border:2px solid var(--primary);border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:700;background:var(--primary);color:#fff">カード</button>
+      <button id="viewTable" onclick="setView('table')" style="padding:8px 14px;border:2px solid var(--primary);border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:700;background:#fff;color:var(--primary)">テーブル</button>
+    </div>
   </div>
   <div class="tag-filters" id="tagFilters"></div>
-  <div class="card-grid" id="cardList"></div>
+  <div id="cardList"></div>
 </div>
 
 <div class="fab-group">
@@ -375,6 +393,7 @@ const DRIVE_SCOPE='https://www.googleapis.com/auth/drive.appdata';
 const DRIVE_FILE='meishilog_data.json';
 let cards=JSON.parse(localStorage.getItem(SK)||'[]'), editingId=null, activeTag='';
 let gAccessToken=null, driveFileId=null, syncBusy=false;
+let viewMode=localStorage.getItem('meishilog_view')||'card';
 const TOKEN_KEY='meishilog_gtoken', TOKEN_EXP_KEY='meishilog_gtoken_exp';
 
 function saveToken(token,expiresIn){
@@ -547,15 +566,40 @@ function renderTagFilters(){
     tags.map(t=>`<div class="tag-chip${activeTag===t?' active':''}" onclick="activeTag='${esc(t)}';renderList()">${esc(t)}</div>`).join('');
 }
 
+// ============ VIEW TOGGLE ============
+const TABLE_COLS=[
+  'name','gender','birthday','age','residence','phone','email','contact',
+  'company','position','jobType','workplace','hp','career',
+  'metDate','howMet','wantToConnect','introducedTo','introducedFrom','introduction',
+  'content','problem','solution',
+  'apo1Purpose','apo1Review','apo2Purpose','apo2Review','apo3Purpose','apo3Review','tags'
+];
+const COL_LBL={...{name:'名前',gender:'性別',birthday:'生年月日',age:'年齢',residence:'住所',phone:'電話',email:'メール',contact:'その他連絡'},
+  ...{company:'企業名',position:'役職',jobType:'職種',workplace:'勤務地',hp:'HP',career:'経歴'},
+  ...{metDate:'あった日',howMet:'きっかけ',wantToConnect:'つながりたい人',introducedTo:'紹介与',introducedFrom:'紹介貰',introduction:'紹介文'},
+  ...{content:'内容',problem:'悩み',solution:'解決策'},
+  ...{apo1Purpose:'1回目目的',apo1Review:'1回目振返',apo2Purpose:'2回目目的',apo2Review:'2回目振返',apo3Purpose:'3回目目的',apo3Review:'3回目振返',tags:'タグ'}};
+
+function updateViewBtns(){
+  document.getElementById('viewCard').style.background=viewMode==='card'?'var(--primary)':'#fff';
+  document.getElementById('viewCard').style.color=viewMode==='card'?'#fff':'var(--primary)';
+  document.getElementById('viewTable').style.background=viewMode==='table'?'var(--primary)':'#fff';
+  document.getElementById('viewTable').style.color=viewMode==='table'?'#fff':'var(--primary)';
+}
+function setView(mode){
+  viewMode=mode;
+  localStorage.setItem('meishilog_view',mode);
+  updateViewBtns();
+  renderList();
+}
+
 // ============ LIST ============
-function renderList(){
+function filterSort(){
   const q=document.getElementById('searchInput').value.toLowerCase();
   const sort=document.getElementById('sortSelect').value;
   let list=cards.filter(c=>{
     const text=[c.name,c.company,c.jobType,c.position,c.tags,c.howMet,c.phone,c.email].join(' ').toLowerCase();
-    const matchQ=!q||text.includes(q);
-    const matchTag=!activeTag||(c.tags||'').split(',').map(t=>t.trim()).includes(activeTag);
-    return matchQ&&matchTag;
+    return(!q||text.includes(q))&&(!activeTag||(c.tags||'').split(',').map(t=>t.trim()).includes(activeTag));
   });
   list.sort((a,b)=>{
     if(sort==='name')return(a.name||'').localeCompare(b.name||'','ja');
@@ -563,13 +607,23 @@ function renderList(){
     if(sort==='metDate')return(b.metDate||'').localeCompare(a.metDate||'');
     return(b.updatedAt||0)-(a.updatedAt||0);
   });
+  return list;
+}
 
+function renderList(){
+  const list=filterSort();
   const el=document.getElementById('cardList');
+  updateStats();renderTagFilters();updateViewBtns();
+  if(viewMode==='table'){renderTable(list,el);return;}
+  renderCards(list,el);
+}
+
+function renderCards(list,el){
+  el.className='card-grid';
   if(!list.length){
     el.innerHTML=`<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="2" y="3" width="20" height="18" rx="3"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="13" y2="12"/></svg><p>${!cards.length?'まだ名刺がありません<br>右下のボタンから登録しましょう':'検索結果がありません'}</p></div>`;
-    updateStats();renderTagFilters();return;
+    return;
   }
-
   el.innerHTML=list.map(c=>{
     const col=avatarColor(c.name);
     const tags=(c.tags||'').split(',').filter(Boolean).slice(0,3);
@@ -588,7 +642,23 @@ function renderList(){
         ${actions.length?'<div class="card-actions">'+actions.join('')+'</div>':''}
       </div>
     </div>`}).join('');
-  updateStats();renderTagFilters();
+}
+
+function renderTable(list,el){
+  el.className='';
+  if(!list.length){
+    el.innerHTML=`<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="2" y="3" width="20" height="18" rx="3"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="13" y2="12"/></svg><p>${!cards.length?'まだ名刺がありません<br>右下のボタンから登録しましょう':'検索結果がありません'}</p></div>`;
+    return;
+  }
+  const thead='<tr>'+TABLE_COLS.map(k=>`<th title="${COL_LBL[k]}">${COL_LBL[k]}</th>`).join('')+'</tr>';
+  const tbody=list.map(c=>{
+    const cols=TABLE_COLS.map(k=>{
+      const v=c[k]||'';
+      return`<td title="${esc(v)}">${esc(v)}</td>`;
+    }).join('');
+    return`<tr onclick="openDetail('${c.id}')">${cols}</tr>`;
+  }).join('');
+  el.innerHTML=`<div class="table-wrap"><table class="meishi-table"><thead>${thead}</thead><tbody>${tbody}</tbody></table></div>`;
 }
 
 // ============ FORM ============
@@ -804,6 +874,7 @@ document.querySelectorAll('.overlay').forEach(el=>el.addEventListener('click',e=
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeForm();closeDetail();closeSettings()}});
 if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 if(window.matchMedia('(display-mode:standalone)').matches||window.navigator.standalone)document.body.classList.add('is-pwa');
+updateViewBtns();
 renderList();
 
 // ============ AUTO SYNC ON LOAD ============
